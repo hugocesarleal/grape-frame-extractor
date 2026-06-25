@@ -1,0 +1,22 @@
+# Vídeos e imagens do dataset (não versionar)
+*.mp4
+*.avi
+*.mov
+dataset_uvas_estruturado/
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.env
+venv/
+env/
+
+# Sistema operacional
+.DS_Store
+Thumbs.db
+
+# IDEs
+.vscode/
+.idea/
+*.swp
