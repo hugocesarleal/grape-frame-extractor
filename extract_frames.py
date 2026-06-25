@@ -1,14 +1,14 @@
 """
 extract_frames.py
 -----------------
-Extrai um frame representativo por janela temporal de vídeos de vinhedo,
-priorizando nitidez (variância do Laplaciano) e luminosidade adequada.
+Extracts one representative frame per time window from vineyard videos,
+prioritizing sharpness (Laplacian variance) and adequate brightness.
 
-Uso:
+Usage:
     python extract_frames.py
 
-Os vídeos devem estar na pasta raiz com os nomes video1.mp4 ... video7.mp4.
-Os frames extraídos são salvos em dataset_uvas_estruturado/<nome_do_video>/.
+Videos must be placed in the project root named video1.mp4 ... video7.mp4.
+Extracted frames are saved to dataset_grapes_structured/<video_name>/.
 """
 
 import cv2
@@ -17,102 +17,115 @@ import numpy as np
 
 
 # ---------------------------------------------------------------------------
-# Configurações globais
+# Global settings
 # ---------------------------------------------------------------------------
 
-PASTA_SAIDA_BASE = "dataset_uvas_estruturado"
+OUTPUT_FOLDER = "dataset_grapes_structured"
 VIDEOS = [f"video{i}.mp4" for i in range(1, 8)]
-FRAMES_POR_SEGUNDO = 4       # janelas por segundo → 1 frame por janela
-LIMIAR_LUMINOSIDADE = 40.0   # abaixo disso o frame é considerado escuro
+WINDOWS_PER_SECOND = 4      # time windows per second — one frame extracted per window
+BRIGHTNESS_THRESHOLD = 40.0  # frames below this mean brightness are considered too dark
 
 
 # ---------------------------------------------------------------------------
-# Funções auxiliares
+# Helper functions
 # ---------------------------------------------------------------------------
 
-def calcular_nitidez(frame_cinza: np.ndarray) -> float:
+def compute_sharpness(gray_frame: np.ndarray) -> float:
     """
-    Retorna a variância do Laplaciano do frame em escala de cinza.
-    Quanto maior o valor, mais nítido é o frame.
+    Returns the Laplacian variance of a grayscale frame.
+    Higher values indicate sharper images with more defined edges.
     """
-    return cv2.Laplacian(frame_cinza, cv2.CV_64F).var()
+    return cv2.Laplacian(gray_frame, cv2.CV_64F).var()
 
 
-def calcular_luminosidade(frame_cinza: np.ndarray) -> float:
+def compute_brightness(gray_frame: np.ndarray) -> float:
     """
-    Retorna a luminosidade média do frame (valor entre 0 e 255).
+    Returns the mean pixel intensity of a grayscale frame (range 0–255).
     """
-    return float(np.mean(frame_cinza))
+    return float(np.mean(gray_frame))
 
 
-def selecionar_melhor_frame(janela: list, limiar: float) -> tuple:
+def select_best_frame(window: list, threshold: float) -> tuple:
     """
-    Dado uma lista de frames de uma janela temporal, seleciona o mais adequado.
+    Selects the most suitable frame from a time window.
 
-    Critério principal: entre os frames com luminosidade >= limiar,
-    escolhe o de maior nitidez.
+    Primary criterion: among frames with brightness >= threshold,
+    picks the sharpest one.
 
-    Fallback: se todos estiverem escuros, escolhe o mais nítido do lote.
+    Fallback: if all frames are too dark, picks the sharpest one
+    regardless of brightness.
 
-    Retorna (frame_selecionado, status) onde status é 'ideal' ou 'fallback'.
-    """
-    frames_claros = [f for f in janela if f["luminosidade"] >= limiar]
-
-    if frames_claros:
-        melhor = max(frames_claros, key=lambda f: f["nitidez"])
-        return melhor, "ideal"
-
-    melhor = max(janela, key=lambda f: f["nitidez"])
-    return melhor, "fallback"
-
-
-def salvar_frame(frame: np.ndarray, caminho: str) -> None:
-    """
-    Salva o frame como JPEG no caminho especificado.
-    """
-    cv2.imwrite(caminho, frame)
-
-
-# ---------------------------------------------------------------------------
-# Função principal de extração
-# ---------------------------------------------------------------------------
-
-def extrair_frames(caminho_video: str, pasta_saida: str,
-                   frames_por_seg: int = 4, limiar_luz: float = 40.0) -> int:
-    """
-    Processa um vídeo e extrai exatamente um frame por janela temporal.
-
-    Parâmetros
+    Parameters
     ----------
-    caminho_video : str
-        Caminho para o arquivo de vídeo.
-    pasta_saida : str
-        Pasta onde os frames serão salvos.
-    frames_por_seg : int
-        Número de janelas por segundo (equivale a quantos frames extrair por segundo).
-    limiar_luz : float
-        Valor mínimo de luminosidade média para considerar um frame bem iluminado.
+    window : list
+        List of frame dicts with keys 'image', 'sharpness',
+        'brightness', and 'original_index'.
+    threshold : float
+        Minimum mean brightness to consider a frame well-lit.
 
-    Retorna
+    Returns
+    -------
+    tuple
+        (best_frame_dict, status) where status is 'ideal' or 'fallback'.
+    """
+    bright_frames = [f for f in window if f["brightness"] >= threshold]
+
+    if bright_frames:
+        best = max(bright_frames, key=lambda f: f["sharpness"])
+        return best, "ideal"
+
+    best = max(window, key=lambda f: f["sharpness"])
+    return best, "fallback"
+
+
+def save_frame(frame: np.ndarray, path: str) -> None:
+    """
+    Saves a frame as a JPEG file at the given path.
+    """
+    cv2.imwrite(path, frame)
+
+
+# ---------------------------------------------------------------------------
+# Core extraction function
+# ---------------------------------------------------------------------------
+
+def extract_frames(video_path: str, output_folder: str,
+                   windows_per_sec: int = 4,
+                   brightness_threshold: float = 40.0) -> int:
+    """
+    Processes a single video and extracts exactly one frame per time window.
+
+    Parameters
+    ----------
+    video_path : str
+        Path to the input video file.
+    output_folder : str
+        Folder where extracted frames will be saved.
+    windows_per_sec : int
+        Number of time windows per second of video.
+    brightness_threshold : float
+        Minimum mean brightness (0–255) for a frame to be considered well-lit.
+
+    Returns
     -------
     int
-        Número de frames salvos.
+        Number of frames saved.
     """
-    os.makedirs(pasta_saida, exist_ok=True)
+    os.makedirs(output_folder, exist_ok=True)
 
-    cap = cv2.VideoCapture(caminho_video)
+    cap = cv2.VideoCapture(video_path)
     if not cap.isOpened():
-        print(f"  [ERRO] Não foi possível abrir: {caminho_video}")
+        print(f"  [ERROR] Could not open: {video_path}")
         return 0
 
-    fps_original = cap.get(cv2.CAP_PROP_FPS)
-    tamanho_janela = max(1, int(round(fps_original / frames_por_seg)))
+    original_fps = cap.get(cv2.CAP_PROP_FPS)
+    window_size = max(1, int(round(original_fps / windows_per_sec)))
 
-    print(f"  FPS do vídeo: {fps_original:.2f} | Tamanho da janela: {tamanho_janela} frames")
+    print(f"  Video FPS: {original_fps:.2f} | Window size: {window_size} frames")
 
-    janela = []
-    indice_frame = 0
-    frames_salvos = 0
+    window = []
+    frame_index = 0
+    frames_saved = 0
     fallbacks = 0
 
     while True:
@@ -120,79 +133,78 @@ def extrair_frames(caminho_video: str, pasta_saida: str,
         if not ret:
             break
 
-        frame_cinza = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
 
-        janela.append({
-            "imagem": frame,
-            "nitidez": calcular_nitidez(frame_cinza),
-            "luminosidade": calcular_luminosidade(frame_cinza),
-            "indice_original": indice_frame,
+        window.append({
+            "image": frame,
+            "sharpness": compute_sharpness(gray),
+            "brightness": compute_brightness(gray),
+            "original_index": frame_index,
         })
 
-        if len(janela) == tamanho_janela:
-            melhor, status = selecionar_melhor_frame(janela, limiar_luz)
+        if len(window) == window_size:
+            best, status = select_best_frame(window, brightness_threshold)
 
-            nome_arquivo = (
-                f"frame_{frames_salvos:06d}"
-                f"_orig_{melhor['indice_original']:06d}.jpg"
+            filename = (
+                f"frame_{frames_saved:06d}"
+                f"_orig_{best['original_index']:06d}.jpg"
             )
-            salvar_frame(melhor["imagem"], os.path.join(pasta_saida, nome_arquivo))
+            save_frame(best["image"], os.path.join(output_folder, filename))
 
             if status == "fallback":
                 fallbacks += 1
 
-            frames_salvos += 1
-            janela = []
+            frames_saved += 1
+            window = []
 
-        indice_frame += 1
+        frame_index += 1
 
-    # Processa os frames restantes caso o vídeo não termine em janela completa
-    if janela:
-        melhor, status = selecionar_melhor_frame(janela, limiar_luz)
-        nome_arquivo = (
-            f"frame_{frames_salvos:06d}"
-            f"_orig_{melhor['indice_original']:06d}.jpg"
+    # Handle remaining frames if the video does not end on a full window
+    if window:
+        best, status = select_best_frame(window, brightness_threshold)
+        filename = (
+            f"frame_{frames_saved:06d}"
+            f"_orig_{best['original_index']:06d}.jpg"
         )
-        salvar_frame(melhor["imagem"], os.path.join(pasta_saida, nome_arquivo))
+        save_frame(best["image"], os.path.join(output_folder, filename))
         if status == "fallback":
             fallbacks += 1
-        frames_salvos += 1
+        frames_saved += 1
 
     cap.release()
 
-    print(f"  Frames extraídos: {frames_salvos} | Fallbacks (janelas escuras): {fallbacks}")
-    return frames_salvos
+    print(f"  Frames extracted: {frames_saved} | Fallbacks (dark windows): {fallbacks}")
+    return frames_saved
 
 
 # ---------------------------------------------------------------------------
-# Ponto de entrada
+# Entry point
 # ---------------------------------------------------------------------------
 
 def main():
-    total_geral = 0
+    total = 0
 
-    for nome_video in VIDEOS:
-        pasta_destino = os.path.join(
-            PASTA_SAIDA_BASE,
-            os.path.splitext(nome_video)[0]
+    for video_name in VIDEOS:
+        output_path = os.path.join(
+            OUTPUT_FOLDER,
+            os.path.splitext(video_name)[0]
         )
-        print(f"\n=== Processando {nome_video} ===")
+        print(f"\n=== Processing {video_name} ===")
 
-        if not os.path.isfile(nome_video):
-            print(f"  [AVISO] Arquivo não encontrado, pulando.")
+        if not os.path.isfile(video_name):
+            print(f"  [WARNING] File not found, skipping.")
             continue
 
-        total = extrair_frames(
-            caminho_video=nome_video,
-            pasta_saida=pasta_destino,
-            frames_por_seg=FRAMES_POR_SEGUNDO,
-            limiar_luz=LIMIAR_LUMINOSIDADE,
+        total += extract_frames(
+            video_path=video_name,
+            output_folder=output_path,
+            windows_per_sec=WINDOWS_PER_SECOND,
+            brightness_threshold=BRIGHTNESS_THRESHOLD,
         )
-        total_geral += total
 
     print(f"\n{'='*50}")
-    print(f"Extração concluída. Total de frames gerados: {total_geral}")
-    print(f"Saída em: {os.path.abspath(PASTA_SAIDA_BASE)}")
+    print(f"Extraction complete. Total frames generated: {total}")
+    print(f"Output folder: {os.path.abspath(OUTPUT_FOLDER)}")
 
 
 if __name__ == "__main__":
